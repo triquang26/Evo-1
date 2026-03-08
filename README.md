@@ -15,6 +15,7 @@
 
 
 ## 📰 News  
+- 🗓️ **2026-02-20** — Evo-1 is accepted by CVPR 2026 🎉
 - 🗓️ **2025-12-15** — Added Evo-1 inference code in Aloha dual arm (Implemented by community user @meijie-jesse)
 - 🗓️ **2025-11-15** — Added Evo-1 inference in the LeRobot framework for SO100/SO101
 - 🗓️ **2025-11-10** — Released inference script in xarm6

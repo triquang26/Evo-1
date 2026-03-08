@@ -1,5 +1,5 @@
 
-# Evo-1: Lightweight Vision-Language-Action Model with Preserved Semantic Alignment
+# Evo-1: Lightweight Vision-Language-Action Model with Preserved Semantic Alignment [CVPR 2026]
 
 [![📄 Paper](https://img.shields.io/badge/arXiv-Paper-red)](https://arxiv.org/abs/2511.04555)  
 

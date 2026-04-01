@@ -148,7 +148,7 @@ async def handle_request(websocket, model, normalizer):
 if __name__ == "__main__":
     ckpt_dir = "Your/Path/To/Checkpoint"
     #Example: ckpt_dir = "/home/dell/checkpoints/Evo1/Evo1_MetaWorld/"
-
+    ckpt_dir = "/mnt/data/sftp/data/quangpt3/Evo-1/LIBERO_evaluation/checkpoint"
     port = 9000
 
     print("Loading EVO_1 model...")

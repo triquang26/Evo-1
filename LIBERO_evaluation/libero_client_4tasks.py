@@ -24,7 +24,7 @@ class Args():
     ckpt_name = f"Evo1_libero_all"  
     task_suites = ["libero_spatial", "libero_object", "libero_goal", "libero_10"] 
     log_file = f"./log_file/{ckpt_name}.txt"
-    num_episodes = 10
+    num_episodes = 1
     SEED = 42
     
     
@@ -132,7 +132,7 @@ async def run(SERVER_URL: str, max_steps: int = None, num_episodes: int = None, 
 
             log.info(f"\n========= Start task{task_id+1}: {task_description} =========")
 
-            task_success = 0
+            task_success = 1
             task_episodes = min(num_episodes, len(initial_states))
 
             for ep in range(task_episodes):

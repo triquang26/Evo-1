@@ -14,7 +14,7 @@ from torch import nn
 import logging
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
-
+DEBUG = True
 # === Image Transformations ===
 def build_transform(input_size):
     return T.Compose([
@@ -76,15 +76,26 @@ class InternVL3Embedder(nn.Module):
         self.max_text_length = 1024  # InternVL3 supports up to 1024 tokens
         self.transform = build_transform(image_size)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=False)
-        self.model = AutoModel.from_pretrained(
-            model_name,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-            use_flash_attn=True,
-            low_cpu_mem_usage=True,
-            _fast_init=False,
+        if DEBUG == True:
+            self.model = AutoModel.from_pretrained(
+                model_name,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True,
+                use_flash_attn=False,
+                low_cpu_mem_usage=True,
+                _fast_init=False,
+            ).to(self.device) 
+            import inspect
+            print("Source file của Language Model nằm ở:", inspect.getfile(self.model.language_model.__class__))
+        else:
+            self.model = AutoModel.from_pretrained(
+                model_name,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True,
+                use_flash_attn=True,
+                low_cpu_mem_usage=True,
+                _fast_init=False,
         ).to(self.device) 
-        
         if hasattr(self.model.language_model, 'model'):
             layers = self.model.language_model.model.layers
 
@@ -246,8 +257,12 @@ class InternVL3Embedder(nn.Module):
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             output_hidden_states=True,
+            output_attentions=True,
             return_dict=True,
         )
+        attentions = outputs.attentions
+        print("Attention saving")
+        torch.save(attentions[-1],'attention_map_step.pt')
         fused_hidden = outputs.hidden_states[-1].to(torch.float32)
 
         return fused_hidden[:, 0, :] if return_cls_only else fused_hidden

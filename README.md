@@ -439,3 +439,6 @@ You can also scan the QR code below to connect with me or join chatting group on
 <img src="readme_pics/wechat_group.jpg" width="200" height="300">
   
 </p>
+# Configuration Note
+'''
+pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.4cxx11abiFALSE-cp310-cp310-linux_x86_64.whl

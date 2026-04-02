@@ -23,7 +23,7 @@ def _patched_file_handler(filename, mode='a', encoding=None, delay=False):
 
 logging.FileHandler = _patched_file_handler
 
-os.environ["MUJOCO_GL"] = "osmesa"
+os.environ["MUJOCO_GL"] = "egl"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

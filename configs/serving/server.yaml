@@ -1,0 +1,6 @@
+host: "0.0.0.0"
+port: 9000
+checkpoint_dir: "/mnt/data/sftp/data/quangpt3/Evo-1/LIBERO_evaluation/libero_cpkt" # Path to your deployed model checkpoint
+num_inference_timesteps: 32
+max_message_size: 100000000
+device: "cuda"

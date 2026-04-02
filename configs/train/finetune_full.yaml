@@ -1,0 +1,44 @@
+run_name: "evo1_finetune_full"
+device: "cuda"
+disable_wandb: false
+wandb_project: "evo1_training"
+
+dataset:
+  type: "lerobot"
+  data_paths: null
+  config_path: "configs/dataset/lerobot.yaml"
+  image_size: 448
+  max_samples_per_file: null
+  binarize_gripper: false
+  use_augmentation: true
+  num_workers: 8
+  batch_size: 16
+
+model:
+  vision_encoder: "OpenGVLab/InternVL3-1B"
+  action_head: "flowmatching"
+  return_cls_only: false
+  horizon: 16
+  per_action_dim: 7
+  state_dim: 7
+  num_layers: 8
+  dropout: 0.0
+
+train:
+  lr: 1e-5
+  max_steps: 60000
+  warmup_steps: 3000
+  grad_clip_norm: 1.0
+  weight_decay: 1e-5
+  finetune_vlm: true
+  finetune_action_head: true
+
+logging:
+  log_interval: 100
+  ckpt_interval: 1000
+  save_dir: "./checkpoints/finetune_full"
+
+resume:
+  enabled: false
+  path: null
+  pretrain: false

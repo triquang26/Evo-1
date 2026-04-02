@@ -1,0 +1,10 @@
+server_url: "ws://0.0.0.0:9000"
+ckpt_name: "Evo1_libero_all"
+task_suites: ["libero_spatial", "libero_object", "libero_goal", "libero_10"]
+max_steps: [25, 25, 25, 95]
+num_episodes: 1
+horizon: 14
+seed: 42
+video_fps: 30
+video_dir: "./video_log_file"
+log_dir: "./log_file"

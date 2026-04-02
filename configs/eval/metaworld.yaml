@@ -1,0 +1,15 @@
+server_url: "ws://127.0.0.1:9000"
+camera_name: "corner2"
+img_size: [448, 448]
+state_take: 8
+horizon: 15
+episodes: 10
+episode_horizon: 400
+seed: 4042
+target_level: "all"
+order_json_path: "configs/eval/mt50_order.json"
+tasks_jsonl_path: "configs/eval/tasks.jsonl"
+log_dir: "logs"
+video_save_dir: "episode_videos"
+video_fps: 10
+video_dup_frames: 1

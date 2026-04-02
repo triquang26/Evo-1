@@ -71,7 +71,7 @@ def load_model_and_normalizer(ckpt_dir, timesteps=32, device="cuda"):
         stats = json.load(f)
 
     model_cfg = config.get("model", config)
-    if "finetune_vlm" in config.get("train", config):
+    if "train" in config:
         config["train"]["finetune_vlm"] = False
         config["train"]["finetune_action_head"] = False
     else:

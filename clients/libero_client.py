@@ -72,9 +72,14 @@ def load_config(config_path: str = None) -> dict:
         },
     }
 
-    config_file = Path(config_path) if config_path else None
+    if config_path:
+        p = Path(config_path)
+        config_file = p if p.is_absolute() else (Path(__file__).resolve().parent.parent / p)
+    else:
+        config_file = None
+
     if config_file and config_file.exists():
-        with config_file.open("r") as f:
+        with config_file.open("r") as f:s
             user_cfg = yaml.safe_load(f)
         for key in defaults:
             if key in user_cfg:

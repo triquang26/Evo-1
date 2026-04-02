@@ -9,4 +9,11 @@ logs/
 checkpoints/
 Evo1_training_dataset/
 LIBERO/
+LIBERO_evaluation/libero_cpkt/*
 LIBERO_evaluation/checkpoint/*
+Evo_1/dataset/libero_10_no_noops_1.0.0_lerobot
+Evo_1/video_log_file
+Evo_1/scripts/dataset
+
+Evo_1/training_data_cache
+LIBERO_evaluation/libero_cpkt/

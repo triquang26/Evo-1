@@ -14,7 +14,7 @@ from torch import nn
 import logging
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
-DEBUG = True
+DEBUG = False
 # === Image Transformations ===
 def build_transform(input_size):
     return T.Compose([
@@ -234,7 +234,7 @@ class InternVL3Embedder(nn.Module):
 
     def get_fused_image_text_embedding_from_tensor_images(
         self,
-        image_tensors: list[Union[Image.Image, torch.Tensor]],
+        image_tensors: List[Union[Image.Image, torch.Tensor]],
         image_mask: torch.Tensor,
         text_prompt: str,
         return_cls_only: bool = True,
@@ -257,12 +257,11 @@ class InternVL3Embedder(nn.Module):
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             output_hidden_states=True,
-            output_attentions=True,
             return_dict=True,
         )
-        attentions = outputs.attentions
-        print("Attention saving")
-        torch.save(attentions[-1],'attention_map_step.pt')
+        # attentions = outputs.attentions
+        # print("Attention saving")
+        # torch.save(attentions[-1],'attention_map_step.pt')
         fused_hidden = outputs.hidden_states[-1].to(torch.float32)
 
         return fused_hidden[:, 0, :] if return_cls_only else fused_hidden

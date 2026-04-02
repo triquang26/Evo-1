@@ -550,9 +550,10 @@ if __name__ == "__main__":
     parser.add_argument("--data_paths", type=str, required=False)
     parser.add_argument("--dataset_config_path", type=str, required=True)
     parser.add_argument("--image_size", type=int, default=448)
+    parser.add_argument("--max_samples_per_file", type=int, default=None, help="Limit samples per parquet file (for smoke testing)")
     parser.add_argument("--binarize_gripper", action="store_true", default=False, help="Whether to binarize gripper state/action (default: False).")
     parser.add_argument("--use_augmentation", action="store_true", help="Enable data augmentation on images")
-
+    
     # Training
     parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--batch_size", type=int, default=16)

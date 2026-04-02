@@ -11,6 +11,19 @@ import random
 from dataclasses import dataclass, field
 from typing import List, Tuple
 
+CUSTOM_LOG_DIR = "/mnt/data/sftp/data/quangpt3/Evo-1/Evo_1/logs"
+os.makedirs(CUSTOM_LOG_DIR, exist_ok=True)
+
+_original_file_handler = logging.FileHandler
+
+def _patched_file_handler(filename, mode='a', encoding=None, delay=False):
+    if filename == "/tmp/robosuite.log":
+        filename = os.path.join(CUSTOM_LOG_DIR, "robosuite.log")
+    return _original_file_handler(filename, mode, encoding, delay)
+
+logging.FileHandler = _patched_file_handler
+
+
 from libero.libero import benchmark, get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
 
@@ -26,7 +39,7 @@ class Config:
     task_suites: List[str] = field(default_factory=lambda: ["libero_spatial", "libero_object", "libero_goal", "libero_10"])
     log_dir: str = "./log_file"
     video_dir: str = "./video_log_file"
-    num_episodes: int = 10
+    num_episodes: int = 1
     seed: int = 42
     camera_res: int = 448
 
@@ -112,7 +125,9 @@ class Evaluator:
         os.makedirs(save_dir, exist_ok=True)
         filepath = os.path.join(save_dir, filename)
         if frames:
-            await asyncio.to_thread(imageio.mimsave, filepath, frames, fps=30)
+            import functools
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, functools.partial(imageio.mimsave, filepath, frames, fps=30))
 
     async def run_suite(self, task_suite_name: str, max_steps: int):
         benchmark_dict = benchmark.get_benchmark_dict()

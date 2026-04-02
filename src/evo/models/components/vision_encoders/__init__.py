@@ -1,1 +1,1 @@
-from .internvit import InternVL3Embedder
+from .internvl3_embedder import InternVL3Embedder

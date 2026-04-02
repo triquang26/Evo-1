@@ -177,7 +177,7 @@ def prepare_dataloader(dataset, config: dict) -> DataLoader:
         shuffle=True,
         num_workers=num_workers,
         pin_memory=True,
-        persistent_workers=False,
+        persistent_workers=(num_workers > 0),
         drop_last=True,
         collate_fn=custom_collate_fn
     )
@@ -431,10 +431,12 @@ def train(config):
             embodiment_ids = batch["embodiment_ids"]
             fused_tokens_list = []
             
-            for prompt, images, image_mask in zip(prompts, images_batch, image_masks):
-                fused = model.get_vl_embeddings(images=images, image_mask=image_mask, prompt=prompt, return_cls_only=False)
-                fused_tokens_list.append(fused.to(dtype=torch.bfloat16))
-            
+            no_grad_ctx = torch.no_grad() if not config.get("finetune_vlm", False) else torch.enable_grad()
+            with no_grad_ctx:
+                for prompt, images, image_mask in zip(prompts, images_batch, image_masks):
+                    fused = model.get_vl_embeddings(images=images, image_mask=image_mask, prompt=prompt, return_cls_only=False)
+                    fused_tokens_list.append(fused.to(dtype=torch.bfloat16))
+
             fused_tokens = torch.cat(fused_tokens_list, dim=0)
 
             with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):

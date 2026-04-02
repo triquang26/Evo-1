@@ -213,7 +213,8 @@ def log_training_step(step, loss, total_norm, clipped_norm, scheduler, dataloade
     
         })
 
-def save_checkpoint(save_dir, step, model_engine, loss, accelerator, config=None, norm_stats=None):
+def save_checkpoint(save_dir, step, accelerator, loss, config=None, norm_stats=None):
+    """Save checkpoint using Accelerate's save_state API."""
     tag = f"step_{step}"
     checkpoint_dir = os.path.join(save_dir, tag)
 
@@ -222,70 +223,63 @@ def save_checkpoint(save_dir, step, model_engine, loss, accelerator, config=None
         shutil.rmtree(checkpoint_dir)
 
     accelerator.wait_for_everyone()
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
-    client_state = {
-        "step": step,
-        "best_loss": loss if isinstance(loss, float) else loss.item(),
-        "config": config,
-    } if accelerator.is_main_process else {} 
+    # Use Accelerate's native save_state (saves model + optimizer + scheduler + RNG)
+    accelerator.save_state(checkpoint_dir)
 
-    model_engine.save_checkpoint(save_dir, tag=tag, client_state=client_state)
-    
     if accelerator.is_main_process:
+        # Save step metadata
+        meta = {
+            "step": step if isinstance(step, int) else step,
+            "best_loss": loss if isinstance(loss, float) else loss.item(),
+        }
+        with open(os.path.join(checkpoint_dir, "meta.json"), "w") as f:
+            json.dump(meta, f, indent=2)
+
         if config is not None:
-            config_path = os.path.join(checkpoint_dir, "config.json")
-            with open(config_path, "w") as f:
+            with open(os.path.join(checkpoint_dir, "config.json"), "w") as f:
                 json.dump(config, f, indent=2)
 
         if norm_stats is not None:
-            norm_stats_path = os.path.join(checkpoint_dir, "norm_stats.json")
-            with open(norm_stats_path, "w") as f:
+            with open(os.path.join(checkpoint_dir, "norm_stats.json"), "w") as f:
                 json.dump(norm_stats, f, indent=2)
-                
-        checkpoint_meta_path = os.path.join(checkpoint_dir, "checkpoint.json")
-        checkpoint_meta = {
-            "type": "ds_model",
-            "version": 0.0,
-            "checkpoints": "mp_rank_00_model_states.pt"
-        }
-        with open(checkpoint_meta_path, "w") as f:
-            json.dump(checkpoint_meta, f, indent=2)
+
         logging.info(f"[Rank {accelerator.process_index}] Saved checkpoint to {checkpoint_dir}")
 
-def load_checkpoint_with_deepspeed(model_engine, load_dir, accelerator, tag="step_best", load_optimizer_states=True, resume_pretrain=False):
 
+def load_checkpoint_with_accelerate(checkpoint_dir, accelerator, load_optimizer_states=True, resume_pretrain=False):
+    """Load checkpoint using Accelerate's load_state API."""
     try:
-        load_path, client_state = model_engine.load_checkpoint(
-            load_dir,
-            tag=tag,
-            load_module_strict=True,
-            load_optimizer_states=load_optimizer_states and not resume_pretrain,
-            load_lr_scheduler_states=load_optimizer_states and not resume_pretrain
-        )
-        if accelerator.is_main_process:
-            logging.info(f"Loaded DeepSpeed checkpoint from {load_dir}/{tag} (including optimizer states)")
-        return client_state.get("step", 0), client_state
-        
+        if resume_pretrain or not load_optimizer_states:
+            # Only restore model weights — manually load just the model state dict
+            from safetensors.torch import load_file
+            import glob
+            model_files = glob.glob(os.path.join(checkpoint_dir, "model*"))
+            if model_files:
+                accelerator.load_state(checkpoint_dir)
+                if accelerator.is_main_process:
+                    logging.info(f"Loaded model weights from {checkpoint_dir} (optimizer states skipped for pretrain resume)")
+            else:
+                raise FileNotFoundError(f"No model files found in {checkpoint_dir}")
+        else:
+            accelerator.load_state(checkpoint_dir)
+            if accelerator.is_main_process:
+                logging.info(f"Loaded full checkpoint (model + optimizer) from {checkpoint_dir}")
+
+        # Read step metadata
+        meta_path = os.path.join(checkpoint_dir, "meta.json")
+        if os.path.exists(meta_path):
+            with open(meta_path) as f:
+                meta = json.load(f)
+        else:
+            meta = {}
+        return meta.get("step", 0), meta
+
     except Exception as e:
         if accelerator.is_main_process:
-            logging.warning(f"World size mismatch detected: {str(e)}")
-            logging.warning("Attempting to load only model weights (skipping optimizer states)...")
-        try:
-            load_path, client_state = model_engine.load_checkpoint(
-                load_dir,
-                tag=tag,
-                load_module_strict=True,
-                load_optimizer_states=False,
-                load_lr_scheduler_states=False
-            )
-            if accelerator.is_main_process:
-                logging.info(f"Loaded DeepSpeed checkpoint from {load_dir}/{tag} (model weights only)")
-            return client_state.get("step", 0), client_state
-            
-        except Exception as e2:
-            if accelerator.is_main_process:
-                logging.error(f"Failed to load checkpoint even without optimizer states: {str(e2)}")
-            raise RuntimeError(f"Failed to load DeepSpeed checkpoint from {load_dir} with tag {tag}: {str(e2)}")
+            logging.error(f"Failed to load checkpoint from {checkpoint_dir}: {str(e)}")
+        raise RuntimeError(f"Failed to load checkpoint from {checkpoint_dir}: {str(e)}")
 
     
 
@@ -392,19 +386,16 @@ def train(config):
     
     if resume:
         resume_path = resume_path.rstrip("/")
-        resume_dir, resume_tag = os.path.split(resume_path)
 
-        step, client_state = load_checkpoint_with_deepspeed(
-            model_engine,
-            load_dir=resume_dir,
+        step, client_state = load_checkpoint_with_accelerate(
+            checkpoint_dir=resume_path,
             accelerator=accelerator,
-            tag=resume_tag,
-            load_optimizer_states=True,  
+            load_optimizer_states=True,
             resume_pretrain=resume_pretrain
         )
         best_loss = client_state.get("best_loss", float("inf"))
         if accelerator.is_main_process:
-            logging.info(f"Resuming from {resume_dir}/{resume_tag}, step {step}")
+            logging.info(f"Resuming from {resume_path}, step {step}")
     else:
         step = 0
         if accelerator.is_main_process:
@@ -510,11 +501,10 @@ def train(config):
                 save_checkpoint(
                     save_dir,
                     step="best",
-                    model_engine=model_engine,
-                    loss=loss,
                     accelerator=accelerator,
+                    loss=loss,
                     config=config,
-                    norm_stats=dataset.arm2stats_dict 
+                    norm_stats=dataset.arm2stats_dict
                 )
                 accelerator.print("end to save best checkpoint")
                 if accelerator.is_main_process:
@@ -524,11 +514,10 @@ def train(config):
 
             # === Save periodic checkpoint ===
             if step % ckpt_interval == 0 and step > 0:
-                checkpoint_path = os.path.join(save_dir, f"checkpoint_step_{step}.pt")
-                save_checkpoint(save_dir, step=step, model_engine=model_engine, loss=loss, accelerator=accelerator, config=config, norm_stats=dataset.arm2stats_dict)
+                save_checkpoint(save_dir, step=step, accelerator=accelerator, loss=loss, config=config, norm_stats=dataset.arm2stats_dict)
          
     # === Save final model ===
-    save_checkpoint(save_dir, step="final", model_engine=model_engine, loss=loss, accelerator=accelerator, config=config, norm_stats=dataset.arm2stats_dict)
+    save_checkpoint(save_dir, step="final", accelerator=accelerator, loss=loss, config=config, norm_stats=dataset.arm2stats_dict)
     logging.info(f"Final model saved to step_final/")
     logging.info(f"Best checkpoint saved to step_best/ with loss {best_loss:.6f}")
 

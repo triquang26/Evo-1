@@ -76,7 +76,7 @@ def save_video(frames, filename="simulation.mp4", fps=20, save_dir="videos"):
         imageio.mimsave(filepath, frames, fps=fps)
 
 class LiberoBenchmark:
-    def __init__(self, horizon: int, camera_res: int, seed: int, num_episodes: int, video_dir: str, ckpt_name: str, logger: logging.Logger):
+    def __init__(self, horizon: int, camera_res: int, seed: int, num_episodes: int, video_dir: str, ckpt_name: str, logger: logging.Logger,debug=False):
         self.horizon = horizon
         self.camera_res = camera_res
         self.seed = seed
@@ -84,13 +84,14 @@ class LiberoBenchmark:
         self.video_dir = video_dir
         self.ckpt_name = ckpt_name
         self.logger = logger
-
+        self.debug = debug
     async def run_suite(self, task_suite_name: str, max_steps: int, ws):
         suite = benchmark.get_benchmark_dict()[task_suite_name]()
         self.logger.info(f"Starting task suite {task_suite_name} ({suite.n_tasks} tasks)")
         
         total_success, total_episodes, total_steps = 0, 0, 0
-
+        if self.debug:
+            suite.n_tasks = 1
         for task_id in range(suite.n_tasks):
             task = suite.get_task(task_id)
             initial_states = suite.get_task_init_states(task_id)

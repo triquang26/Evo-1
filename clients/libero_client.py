@@ -82,9 +82,11 @@ def load_config(config_path: str = None) -> dict:
         with config_file.open("r") as f:
             user_cfg = yaml.safe_load(f) or {}
 
-        for key in defaults:
-            if key in user_cfg and isinstance(user_cfg[key], dict):
-                defaults[key].update(user_cfg[key])
+        for key, value in user_cfg.items():
+            if key in defaults and isinstance(value, dict) and isinstance(defaults[key], dict):
+                defaults[key].update(value)
+            else:
+                defaults[key] = value
 
     return defaults
 
@@ -103,7 +105,7 @@ async def main():
     server_cfg = cfg["server"]
     log_cfg = cfg["logging"]
     ckpt_cfg = cfg["checkpoint"]
-
+    debug_cfg = cfg["debug"]
     np.random.seed(eval_cfg["seed"])
     random.seed(eval_cfg["seed"])
 
@@ -117,6 +119,7 @@ async def main():
         video_dir=log_cfg["video_dir"],
         ckpt_name=ckpt_cfg["name"],
         logger=logger,
+        debug=debug_cfg,
     )
 
     async with websockets.connect(server_cfg["url"]) as ws:

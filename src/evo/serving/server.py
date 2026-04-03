@@ -84,9 +84,10 @@ def load_model_and_normalizer(ckpt_dir, model_type="evo1", timesteps=32, device=
     else:
         config["num_inference_timesteps"] = timesteps
 
-    if "model" not in config:
-        config["model"] = {}
-    config["model"]["type"] = model_type
+    if "model" in config:
+        config["model"]["type"] = model_type
+    else:
+        config["type"] = model_type
 
     model = build_model(config).eval()
     ckpt_path = os.path.join(ckpt_dir, "mp_rank_00_model_states.pt")

@@ -2,7 +2,8 @@ from src.evo.models.evo1 import EVO1
 from src.evo.models.evo1_custom import EVO1Custom
 
 def build_model(config):
-    model_type = config.get("model", {}).get("type", "evo1").lower()
+    model_cfg = config.get("model", config)
+    model_type = model_cfg.get("type", "evo1").lower()
     
     if model_type == "evo1":
         return EVO1(config)

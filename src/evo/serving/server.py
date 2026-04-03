@@ -14,6 +14,29 @@ import argparse
 
 from src.evo.models.builder import build_model
 
+class ProfilerState:
+    def __init__(self):
+        self.latencies = []
+        self.peak_vrams = []
+        self.curr_vrams = []
+
+    def update(self, latency, peak_vram, curr_vram):
+        self.latencies.append(latency)
+        self.peak_vrams.append(peak_vram)
+        self.curr_vrams.append(curr_vram)
+        
+    def get_stats(self):
+        if not self.latencies:
+            return None
+        return {
+            "latency": (np.min(self.latencies), np.max(self.latencies), np.mean(self.latencies)),
+            "peak_vram": (np.min(self.peak_vrams), np.max(self.peak_vrams), np.mean(self.peak_vrams)),
+            "curr_vram": (np.min(self.curr_vrams), np.max(self.curr_vrams), np.mean(self.curr_vrams)),
+            "count": len(self.latencies)
+        }
+
+global_profiler = ProfilerState()
+
 class Normalizer:
     def __init__(self, stats_or_path):
         if isinstance(stats_or_path, str):
@@ -145,10 +168,16 @@ def infer_from_json_dict(data: dict, model, normalizer, device="cuda"):
     latency = time.perf_counter() - start_time
     peak_vram = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
     current_vram = torch.cuda.memory_allocated(device) / (1024 ** 2)
+
+    global global_profiler
+    global_profiler.update(latency, peak_vram, current_vram)
+    stats = global_profiler.get_stats()
+
     print(f"\\n================ [Inference Profiling] ================")
-    print(f"Latency   : {latency:.4f} seconds")
-    print(f"Peak VRAM : {peak_vram:.2f} MB")
-    print(f"Curr VRAM : {current_vram:.2f} MB")
+    print(f"Latency   : {latency:.4f} s | Min: {stats['latency'][0]:.4f} | Max: {stats['latency'][1]:.4f} | Avg: {stats['latency'][2]:.4f} s")
+    print(f"Peak VRAM : {peak_vram:.2f} MB | Min: {stats['peak_vram'][0]:.2f} | Max: {stats['peak_vram'][1]:.2f} | Avg: {stats['peak_vram'][2]:.2f} MB")
+    print(f"Curr VRAM : {current_vram:.2f} MB | Min: {stats['curr_vram'][0]:.2f} | Max: {stats['curr_vram'][1]:.2f} | Avg: {stats['curr_vram'][2]:.2f} MB")
+    print(f"Count     : {stats['count']}")
     print(f"=======================================================\\n")
 
     return action_list
@@ -162,6 +191,15 @@ async def handle_request(websocket, model, normalizer, device="cuda"):
             await websocket.send(json.dumps(actions))
     except websockets.exceptions.ConnectionClosed:
         print("Client disconnected.")
+        global global_profiler
+        stats = global_profiler.get_stats()
+        if stats:
+            print(f"\n============== [Final Inference Profiling] ==============")
+            print(f"Total Inferences : {stats['count']}")
+            print(f"Latency          : Min: {stats['latency'][0]:.4f} | Max: {stats['latency'][1]:.4f} | Avg: {stats['latency'][2]:.4f} s")
+            print(f"Peak VRAM        : Min: {stats['peak_vram'][0]:.2f} | Max: {stats['peak_vram'][1]:.2f} | Avg: {stats['peak_vram'][2]:.2f} MB")
+            print(f"Curr VRAM        : Min: {stats['curr_vram'][0]:.2f} | Max: {stats['curr_vram'][1]:.2f} | Avg: {stats['curr_vram'][2]:.2f} MB")
+            print(f"=========================================================\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -2,7 +2,6 @@
 ```bash
 python scripts/train.py \
   --dataset_config_path dataset/config.yaml \
-  --max_samples_per_file 5 \    
   --batch_size 2 \              
   --max_steps 5 \               
   --num_workers 0 \             
@@ -24,3 +23,7 @@ python scripts/train.py \
 ✅ Loss in ra được (không NaN ngay từ đầu)
 ✅ 5 steps hoàn thành không lỗi
 ```
+
+
+
+pip install -e ./externals/lerobot

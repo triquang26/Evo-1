@@ -20,7 +20,7 @@ from accelerate import Accelerator, DistributedType
 import wandb
 import swanlab
 
-from src.evo.models.evo1 import EVO1
+from src.evo.models.builder import build_model
 
 class Trainer:
     def __init__(self, config_path: str):
@@ -142,7 +142,7 @@ class Trainer:
     def train(self):
         dataset, dataloader = self.prepare_data()
         
-        model = EVO1(self.cfg)
+        model = build_model(self.cfg)
         model.train()
         model.set_finetune_flags()
 

@@ -79,10 +79,11 @@ def load_config(config_path: str = None) -> dict:
         config_file = None
 
     if config_file and config_file.exists():
-        with config_file.open("r") as f:s
-            user_cfg = yaml.safe_load(f)
+        with config_file.open("r") as f:
+            user_cfg = yaml.safe_load(f) or {}
+
         for key in defaults:
-            if key in user_cfg:
+            if key in user_cfg and isinstance(user_cfg[key], dict):
                 defaults[key].update(user_cfg[key])
 
     return defaults

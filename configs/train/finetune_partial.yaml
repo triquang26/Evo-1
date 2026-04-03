@@ -15,6 +15,7 @@ dataset:
   batch_size: 16
 
 model:
+  type: "evo1_custom"
   vision_encoder: "OpenGVLab/InternVL3-1B"
   action_head: "flowmatching"
   return_cls_only: false

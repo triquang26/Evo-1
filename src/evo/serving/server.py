@@ -1,4 +1,5 @@
 import os
+import time
 import asyncio
 import websockets
 import numpy as np
@@ -11,7 +12,7 @@ from pathlib import Path
 import yaml
 import argparse
 
-from src.evo.models.evo1 import EVO1
+from src.evo.models.builder import build_model
 
 class Normalizer:
     def __init__(self, stats_or_path):
@@ -61,7 +62,7 @@ def load_server_config(config_path="configs/serving/server.yaml"):
     with open(path, 'r') as f:
         return yaml.safe_load(f)
 
-def load_model_and_normalizer(ckpt_dir, timesteps=32, device="cuda"):
+def load_model_and_normalizer(ckpt_dir, model_type="evo1", timesteps=32, device="cuda"):
     config_path = os.path.join(ckpt_dir, "config.json")
     stats_path = os.path.join(ckpt_dir, "norm_stats.json")
     
@@ -83,7 +84,11 @@ def load_model_and_normalizer(ckpt_dir, timesteps=32, device="cuda"):
     else:
         config["num_inference_timesteps"] = timesteps
 
-    model = EVO1(config).eval()
+    if "model" not in config:
+        config["model"] = {}
+    config["model"]["type"] = model_type
+
+    model = build_model(config).eval()
     ckpt_path = os.path.join(ckpt_dir, "mp_rank_00_model_states.pt")
 
     try:
@@ -103,6 +108,10 @@ def decode_image_from_list(img_list, device="cuda"):
     return transforms.ToTensor()(pil).to(device)
 
 def infer_from_json_dict(data: dict, model, normalizer, device="cuda"):
+    torch.cuda.synchronize()
+    torch.cuda.reset_peak_memory_stats(device)
+    start_time = time.perf_counter()
+
     images = [decode_image_from_list(img, device) for img in data["image"]]
     if len(images) != 3:
         raise ValueError(f"Must provide exactly 3 images. Got {len(images)}")
@@ -129,7 +138,19 @@ def infer_from_json_dict(data: dict, model, normalizer, device="cuda"):
         )
         action = action.reshape(1, -1, 24)
         action = normalizer.denormalize_action(action[0])
-        return action.cpu().numpy().tolist()
+        action_list = action.cpu().numpy().tolist()
+
+    torch.cuda.synchronize()
+    latency = time.perf_counter() - start_time
+    peak_vram = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
+    current_vram = torch.cuda.memory_allocated(device) / (1024 ** 2)
+    print(f"\\n================ [Inference Profiling] ================")
+    print(f"Latency   : {latency:.4f} seconds")
+    print(f"Peak VRAM : {peak_vram:.2f} MB")
+    print(f"Curr VRAM : {current_vram:.2f} MB")
+    print(f"=======================================================\\n")
+
+    return action_list
 
 async def handle_request(websocket, model, normalizer, device="cuda"):
     print("Client connected")
@@ -156,8 +177,14 @@ if __name__ == "__main__":
     if not ckpt_dir or not os.path.exists(ckpt_dir):
         raise ValueError(f"Invalid checkpoint_dir: {ckpt_dir}. Please set a valid path in {args.config}")
         
-    print(f"Loading EVO_1 model from {ckpt_dir}...")
-    model, normalizer = load_model_and_normalizer(ckpt_dir, timesteps=cfg.get("num_inference_timesteps", 32), device=device)
+    model_type = cfg.get("model_type", "evo1")
+    print(f"Loading {model_type} model from {ckpt_dir}...")
+    model, normalizer = load_model_and_normalizer(
+        ckpt_dir, 
+        model_type=model_type,
+        timesteps=cfg.get("num_inference_timesteps", 32), 
+        device=device
+    )
 
     async def main():
         print(f"EVO_1 server running at ws://{host}:{port}")

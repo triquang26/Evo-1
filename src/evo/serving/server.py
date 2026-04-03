@@ -152,14 +152,31 @@ def infer_from_json_dict(data: dict, model, normalizer, device="cuda"):
     image_mask = torch.tensor(data["image_mask"], dtype=torch.int32, device=device)
     action_mask = torch.tensor([data["action_mask"]], dtype=torch.int32, device=device)
 
+    enable_detailed_profiling = os.environ.get("ENABLE_CUDA_PROFILE", "0") == "1"
+
     with torch.no_grad(), torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-        action = model.run_inference(
-            images=images,
-            image_mask=image_mask,
-            prompt=prompt,
-            state_input=norm_state,
-            action_mask=action_mask
-        )
+        if enable_detailed_profiling:
+            from torch.profiler import profile, ProfilerActivity
+            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True) as prof:
+                action = model.run_inference(
+                    images=images,
+                    image_mask=image_mask,
+                    prompt=prompt,
+                    state_input=norm_state,
+                    action_mask=action_mask
+                )
+            print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=15))
+            prof.export_chrome_trace("inference_trace.json")
+            print("[Profiling 2] Detailed Chrome trace saved to inference_trace.json")
+        else:
+            action = model.run_inference(
+                images=images,
+                image_mask=image_mask,
+                prompt=prompt,
+                state_input=norm_state,
+                action_mask=action_mask
+            )
+
         action = action.reshape(1, -1, 24)
         action = normalizer.denormalize_action(action[0])
         action_list = action.cpu().numpy().tolist()

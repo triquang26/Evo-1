@@ -121,14 +121,29 @@ class EVO1(nn.Module):
         return_cls_only: Union[bool, None] = None,
         action_mask: Union[torch.Tensor, None] = None
     ) -> torch.Tensor:
+        import time
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+
         fused_tokens = self.get_vl_embeddings(
             images=images,
             image_mask=image_mask,
             prompt=prompt,
             return_cls_only=return_cls_only
         )
+        
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+
         state_tensor = self.prepare_state(state_input)  
-        return self.predict_action(fused_tokens, state_tensor, action_mask=action_mask)
+        action = self.predict_action(fused_tokens, state_tensor, action_mask=action_mask)
+        
+        torch.cuda.synchronize()
+        t2 = time.perf_counter()
+
+        print(f"[Profiling 1] VLM InternVL3: {(t1 - t0) * 1000:.2f} ms | Flow Matching Head: {(t2 - t1) * 1000:.2f} ms")
+
+        return action
 
     def forward(self, fused_tokens, state=None, actions_gt=None, action_mask=None, embodiment_ids=None):
         return self.predict_action(fused_tokens, state, actions_gt, action_mask, embodiment_ids)

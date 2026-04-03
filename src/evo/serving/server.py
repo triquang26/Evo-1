@@ -157,6 +157,13 @@ def infer_from_json_dict(data: dict, model, normalizer, device="cuda"):
     with torch.no_grad(), torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
         if enable_detailed_profiling:
             from torch.profiler import profile, ProfilerActivity
+            _ = model.run_inference(
+                images=images,
+                image_mask=image_mask,
+                prompt=prompt,
+                state_input=norm_state,
+                action_mask=action_mask
+            )
             with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True) as prof:
                 action = model.run_inference(
                     images=images,

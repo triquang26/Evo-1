@@ -126,10 +126,10 @@ class BasicTransformerBlock(nn.Module):
             nn.Linear(hidden_dim, embed_dim)
         )
 
-    def forward(self, action_tokens: torch.Tensor, context_tokens: torch.Tensor, time_emb: torch.Tensor):
+    def forward(self, action_tokens: torch.Tensor, context_tokens: torch.Tensor, time_emb: torch.Tensor, return_attn_weights: bool = False):
 
         x = self.norm1(action_tokens)
-        attn_out, _ = self.attn(x, context_tokens, context_tokens)
+        attn_out, attn_weights = self.attn(x, context_tokens, context_tokens, need_weights=return_attn_weights)
 
         x = action_tokens + attn_out
 
@@ -139,6 +139,8 @@ class BasicTransformerBlock(nn.Module):
             x2 = x2 + time_emb.unsqueeze(1)
         ff_out = self.ff(x2)
         x = x + ff_out
+        if return_attn_weights:
+            return x, attn_weights
         return x
 
 class FlowmatchingActionHead(nn.Module):
@@ -221,10 +223,11 @@ class FlowmatchingActionHead(nn.Module):
 
     def forward(self, fused_tokens: torch.Tensor, state: torch.Tensor = None,
                 actions_gt: torch.Tensor = None, embodiment_id: torch.LongTensor = None, 
-                state_mask: torch.Tensor = None, action_mask: torch.Tensor = None):
+                state_mask: torch.Tensor = None, action_mask: torch.Tensor = None,
+                return_attn_weights: bool = False, t: torch.Tensor = None, noise: torch.Tensor = None):
 
         if actions_gt is None:
-            return self.get_action(fused_tokens, state=state, embodiment_id=embodiment_id)
+            return self.get_action(fused_tokens, state=state, embodiment_id=embodiment_id, action_mask=action_mask)
         B = fused_tokens.size(0)
         device = fused_tokens.device
 
@@ -240,7 +243,8 @@ class FlowmatchingActionHead(nn.Module):
 
             context_tokens = torch.cat([context_tokens, state_emb], dim=1) 
 
-        t = torch.distributions.Beta(2, 2).sample((B,)).clamp(0.02, 0.98).to(device).to(dtype=self.dtype)
+        if t is None:
+            t = torch.distributions.Beta(2, 2).sample((B,)).clamp(0.02, 0.98).to(device).to(dtype=self.dtype)
 
         
                     
@@ -253,12 +257,13 @@ class FlowmatchingActionHead(nn.Module):
         actions_gt_seq = actions_gt  
 
 
-        noise = torch.rand_like(actions_gt) * 2 - 1  
+        if noise is None:
+            noise = torch.rand_like(actions_gt) * 2 - 1  
 
-        if action_mask is not None:
-            action_mask = action_mask.to(dtype=noise.dtype, device=noise.device)
-            assert action_mask.shape == noise.shape, f"action_mask shape {action_mask.shape} != noise shape {noise.shape}"
-            noise = noise * action_mask
+            if action_mask is not None:
+                action_mask = action_mask.to(dtype=noise.dtype, device=noise.device)
+                assert action_mask.shape == noise.shape, f"action_mask shape {action_mask.shape} != noise shape {noise.shape}"
+                noise = noise * action_mask
 
 
         if self.horizon > 1:
@@ -283,8 +288,13 @@ class FlowmatchingActionHead(nn.Module):
             action_tokens = self.single_action_proj(action_intermediate_seq) 
 
         x = action_tokens  
+        attn_weights_list = []
         for block in self.transformer_blocks:
-            x = block(x, context_tokens, time_emb)
+            if return_attn_weights:
+                x, attn_weights = block(x, context_tokens, time_emb, return_attn_weights=True)
+                attn_weights_list.append(attn_weights)
+            else:
+                x = block(x, context_tokens, time_emb)
 
         x = self.norm_out(x)  
 
@@ -302,12 +312,14 @@ class FlowmatchingActionHead(nn.Module):
 
         pred_velocity = self.mlp_head(x_pooled, embodiment_id) 
 
+        if return_attn_weights:
+            return pred_velocity, noise, attn_weights_list
         return pred_velocity, noise
 
     def get_action(self, fused_tokens: torch.Tensor, state: torch.Tensor = None, embodiment_id: torch.LongTensor = None, action_mask: torch.Tensor = None):
 
-        print(f"action_mask shape: {action_mask.shape if action_mask is not None else 'None'}")
-        print(f"one sample action_mask: {action_mask[0] if action_mask is not None else 'None'}")
+        # print(f"action_mask shape: {action_mask.shape if action_mask is not None else 'None'}")
+        # print(f"one sample action_mask: {action_mask[0] if action_mask is not None else 'None'}")
 
         B = fused_tokens.size(0)
         device = fused_tokens.device
@@ -331,8 +343,8 @@ class FlowmatchingActionHead(nn.Module):
             per_action_dim = action_dim_total
 
         action = (torch.rand(B, action_dim_total, device=device) * 2 - 1)
-        print(f"action shape: {action.shape}")
-        print(f"one sample action: {action[0]}")
+        # print(f"action shape: {action.shape}")
+        # print(f"one sample action: {action[0]}")
 
         if self.horizon > 1:
             action_seq = action.view(B, self.horizon, per_action_dim)
@@ -342,8 +354,8 @@ class FlowmatchingActionHead(nn.Module):
 
         action_mask = action_mask.view(B, 1, per_action_dim).repeat(1,self.horizon,1)
 
-        print(f"action_mask: {action_mask}")
-        print(f"one sample action_mask: {action_mask[0]}")
+        # print(f"action_mask: {action_mask}")
+        # print(f"one sample action_mask: {action_mask[0]}")
 
         if action_mask is not None:
             action_mask = action_mask.to(dtype=action_seq.dtype, device=action_seq.device)
@@ -351,8 +363,8 @@ class FlowmatchingActionHead(nn.Module):
             action_seq = action_seq * action_mask
         else:
             raise ValueError("action_mask must be provided for inference with flow matching.")
-        print(f"action shape: {action_seq.shape}")
-        print(f"one sample action: {action_seq[0]}")
+        # print(f"action shape: {action_seq.shape}")
+        # print(f"one sample action: {action_seq[0]}")
 
         N = int(getattr(self.config, "num_inference_timesteps", 32))
         dt = 1.0 / N

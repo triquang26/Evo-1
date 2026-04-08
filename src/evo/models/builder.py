@@ -9,5 +9,8 @@ def build_model(config):
         return EVO1(config)
     elif model_type == "evo1_custom":
         return EVO1Custom(config)
+    elif model_type == "evo1_student":
+        from src.evo.models.evo1_student import EVO1Student
+        return EVO1Student(config)
     
     raise ValueError(f"Unknown model type: {model_type}")

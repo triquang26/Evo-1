@@ -69,9 +69,10 @@ def dynamic_preprocess(image, min_num=1, max_num=1, image_size=448, use_thumbnai
     return processed_images
 
 class InternVL3Embedder(nn.Module):
-    def __init__(self, model_name="OpenGVLab/InternVL3-1B", image_size=448, device="cuda"):
+    def __init__(self, model_name="OpenGVLab/InternVL3-1B", image_size=448, device="cuda", num_llm_layers=14, llm_layer_indices=None):
         super().__init__()
         self.device = device
+        self.llm_layer_indices = llm_layer_indices
         self.image_size = image_size
         self.max_text_length = 1024  # InternVL3 supports up to 1024 tokens
         self.transform = build_transform(image_size)
@@ -84,7 +85,7 @@ class InternVL3Embedder(nn.Module):
                 use_flash_attn=False,
                 low_cpu_mem_usage=True,
                 _fast_init=False,
-            ).to(self.device) 
+            )
             import inspect
             print("Source file của Language Model nằm ở:", inspect.getfile(self.model.language_model.__class__))
         else:
@@ -95,13 +96,17 @@ class InternVL3Embedder(nn.Module):
                 use_flash_attn=True,
                 low_cpu_mem_usage=True,
                 _fast_init=False,
-        ).to(self.device) 
+        ) 
         if hasattr(self.model.language_model, 'model'):
             layers = self.model.language_model.model.layers
 
         else:
             layers = self.model.language_model.layers
-        layers = layers[:14]
+            
+        if self.llm_layer_indices is not None:
+            layers = [layers[i] for i in self.llm_layer_indices]
+        else:
+            layers = layers[:num_llm_layers]
 
         if hasattr(self.model.language_model, 'model'):
             self.model.language_model.model.layers = torch.nn.ModuleList(layers)
@@ -111,6 +116,8 @@ class InternVL3Embedder(nn.Module):
 
         if hasattr(self.model, "vision_model") and hasattr(self.model.vision_model, "encoder"):
             self.model.vision_model.encoder.gradient_checkpointing = False
+            
+        self.model = self.model.to(self.device)
         
 
     def _preprocess_images(

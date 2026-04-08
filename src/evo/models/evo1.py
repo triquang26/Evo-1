@@ -76,8 +76,8 @@ class EVO1(nn.Module):
         if return_cls_only is None:
             return_cls_only = self.return_cls_only
 
-        if not images:
-            raise ValueError("Must provide at least one image (PIL.Image). Got `images=None` or empty list.")
+        if images is None or len(images) == 0:
+            raise ValueError("Must provide at least one image. Got `images=None` or empty list/tensor.")
             
         return self.embedder.get_fused_image_text_embedding_from_tensor_images(
             image_tensors=images,
@@ -106,10 +106,13 @@ class EVO1(nn.Module):
         actions_gt: torch.Tensor = None,
         action_mask: torch.Tensor = None,
         embodiment_ids: torch.Tensor = None,
+        return_attn_weights: bool = False,
+        t: torch.Tensor = None,
+        noise: torch.Tensor = None
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if actions_gt is None:
             return self.action_head.get_action(fused_tokens, state=state, action_mask=action_mask, embodiment_id=embodiment_ids)
-        return self.action_head(fused_tokens, state=state, actions_gt=actions_gt, action_mask=action_mask, embodiment_id=embodiment_ids)
+        return self.action_head(fused_tokens, state=state, actions_gt=actions_gt, action_mask=action_mask, embodiment_id=embodiment_ids, return_attn_weights=return_attn_weights, t=t, noise=noise)
 
     @torch.no_grad()
     def run_inference(
@@ -145,8 +148,8 @@ class EVO1(nn.Module):
 
         return action
 
-    def forward(self, fused_tokens, state=None, actions_gt=None, action_mask=None, embodiment_ids=None):
-        return self.predict_action(fused_tokens, state, actions_gt, action_mask, embodiment_ids)
+    def forward(self, fused_tokens, state=None, actions_gt=None, action_mask=None, embodiment_ids=None, return_attn_weights=False, t=None, noise=None):
+        return self.predict_action(fused_tokens, state, actions_gt, action_mask, embodiment_ids, return_attn_weights=return_attn_weights, t=t, noise=noise)
 
     def _freeze_module(self, module: nn.Module, name: str):
         for p in module.parameters():

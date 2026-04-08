@@ -1,7 +1,8 @@
 host: "0.0.0.0"
-port: 9000
-checkpoint_dir: "/mnt/data/sftp/data/quangpt3/Evo-1/LIBERO_evaluation/libero_cpkt"
-model_type: "evo1"
-num_inference_timesteps: 32
+port: 9003
+# checkpoint_dir: "evaluations/LIBERO/libero_cpkt"
+checkpoint_dir: "/mnt/data/sftp/data/quangpt3/Evo-1/checkpoint_distill_stage1_fullfinetuning_v02-2/step_1000"
+model_type: "evo1_student"
+num_inference_timesteps: 4
 max_message_size: 100000000
 device: "cuda"

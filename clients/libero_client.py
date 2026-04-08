@@ -26,6 +26,7 @@ logging.FileHandler = _patched_file_handler
 os.environ["MUJOCO_GL"] = "egl"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "evaluations" / "LIBERO" / "LIBERO"))
 
 from src.evo.evaluation.benchmarks.libero import LiberoBenchmark
 

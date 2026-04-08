@@ -7,16 +7,32 @@ wandb/
 pretraining_data_cache/
 logs/
 checkpoints/
+checkpoints_distill/
 Evo1_training_dataset/
 LIBERO/
-LIBERO_evaluation/libero_cpkt/*
-LIBERO_evaluation/checkpoint/*
-Evo_1/dataset/libero_10_no_noops_1.0.0_lerobot
-Evo_1/video_log_file
-Evo_1/scripts/dataset
+
+# Eval checkpoins
+evaluations/LIBERO/libero_cpkt/*
+evaluations/LIBERO/checkpoint/*
+
+# Data directories
+src/evo/data/libero_10_no_noops_1.0.0_lerobot
+src/evo/data/training_data_cache
+
+# Legacy folder
+legacy/
+
+# Clients & Outputs
 clients/video_log_file
-Evo_1/training_data_cache
 clients/log_file
-LIBERO_evaluation/libero_cpkt/
 evo1.egg-info
 outputs/
+checkpoints_distill_stage1_1000step
+checkpoints_distill_stage1
+checkpoint*
+training_data_cache
+.vscode
+clients/video*
+src/evo/data/
+student*.pt
+*.log

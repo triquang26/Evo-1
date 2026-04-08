@@ -1,0 +1,24 @@
+model:
+  type: "evo1_student"
+  vision_encoder: "OpenGVLab/InternVL3-1B"
+  num_llm_layers: 4  
+  teacher_vlm_dim: 2048 
+  action_head: "flowmatching"
+  flowmatching:
+    action_horizon: 16
+    per_action_dim: 7
+    embed_dim: 896
+    hidden_dim: 1024
+    state_dim: 7
+    state_hidden_dim: 1024
+    num_heads: 8
+    num_layers: 4
+    dropout: 0.1
+    num_inference_timesteps: 4
+    num_categories: 1
+
+device: "cuda"
+return_cls_only: False
+train:
+  finetune_vlm: True    
+  finetune_action_head: True

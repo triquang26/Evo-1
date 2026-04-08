@@ -34,7 +34,6 @@ class Trainer:
         with open(self.config_path, 'r') as f:
             self.cfg = yaml.safe_load(f)
         
-        # Merge sub-configs for easier flat access in specific spots if needed
         self.dataset_cfg = self.cfg.get('dataset', {})
         self.train_cfg = self.cfg.get('train', {})
         self.log_cfg = self.cfg.get('logging', {})
@@ -65,7 +64,7 @@ class Trainer:
                 name=self.cfg.get("run_name", "default_run"),
                 config=self.cfg,
                 dir=self.log_cfg.get("save_dir", "checkpoints"),
-                mode="offline"
+                mode=self.cfg.get("wandb_mode", "online")
             )
             wandb.define_metric("*", step_metric="step")
             
@@ -89,20 +88,23 @@ class Trainer:
         }
 
     def prepare_data(self):
-        # Allow dynamic resolution of old vs new dataset locations
-        try:
-            from dataset.lerobot_dataset_pretrain_mp import LeRobotDataset 
-        except ImportError:
-            from src.evo.data.lerobot_dataset import LeRobotDataset
+        from src.evo.data.lerobot_dataset import LeRobotDataset
         
         with open(self.dataset_cfg.get("config_path"), 'r') as f:
             ds_cfg = yaml.safe_load(f)
+
+        action_head_type = self.model_cfg.get("action_head", "flowmatching").lower()
+        if action_head_type == "flowmatching":
+            fm_cfg = self.model_cfg.get("flowmatching", self.model_cfg)
+            horizon = fm_cfg.get("action_horizon", fm_cfg.get("horizon", 16))
+        else:
+            horizon = self.model_cfg.get("horizon", 16)
 
         dataset = LeRobotDataset(
             config=ds_cfg,
             image_size=self.dataset_cfg.get("image_size", 448),
             max_samples_per_file=self.dataset_cfg.get("max_samples_per_file"),
-            action_horizon=self.model_cfg.get("horizon", 16),
+            action_horizon=horizon,
             binarize_gripper=self.dataset_cfg.get("binarize_gripper", False),
             use_augmentation=self.dataset_cfg.get("use_augmentation", False)
         )
@@ -139,19 +141,20 @@ class Trainer:
                 return False
         return True
 
-    def train(self):
-        dataset, dataloader = self.prepare_data()
-        
+    def build_models(self):
         model = build_model(self.cfg)
         model.train()
         model.set_finetune_flags()
+        return model
 
+    def setup_optimizer(self, models):
         lr = self.train_cfg.get("lr", 1e-4)
         wd = self.train_cfg.get("weight_decay", 1e-5)
         
-        # Build param groups
         decay, no_decay = [], []
-        for n, p in model.named_parameters():
+        # Fetch directly if it has named_parameters
+        params_iterator = models.named_parameters() if hasattr(models, "named_parameters") else []
+        for n, p in params_iterator:
             if not p.requires_grad: continue
             if n.endswith("bias") or ".bias" in n or p.dim() == 1 or "norm" in n.lower():
                 no_decay.append(p)
@@ -159,12 +162,54 @@ class Trainer:
                 decay.append(p)
         
         optimizer = AdamW([{"params": decay, "weight_decay": wd}, {"params": no_decay, "weight_decay": 0.0}], lr=lr)
+        return optimizer
 
-        model, optimizer, dataloader = self.accelerator.prepare(model, optimizer, dataloader)
+    def prepare_accelerator(self, models, optimizer, dataloader):
+        return self.accelerator.prepare(models, optimizer, dataloader)
+
+    def compute_loss(self, models, batch, step):
+        model = models
+        states = batch["states"].to(dtype=torch.bfloat16)
+        actions_gt = batch["actions"].to(dtype=torch.bfloat16)
+        action_mask = batch["action_mask"]
+        
+        fused_tokens_list = []
+        grad_ctx = torch.no_grad() if not self.train_cfg.get("finetune_vlm", False) else torch.enable_grad()
+        
+        with grad_ctx:
+            for prompt, images, im_mask in zip(batch["prompts"], batch["images"], batch["image_masks"]):
+                fused = model.get_vl_embeddings(images=images, image_mask=im_mask, prompt=prompt, return_cls_only=False)
+                fused_tokens_list.append(fused.to(dtype=torch.bfloat16))
+
+        fused_tokens = torch.cat(fused_tokens_list, dim=0)
+
+        with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+            pred_velocity, noise = model(fused_tokens, state=states, actions_gt=actions_gt, action_mask=action_mask)
+            
+        target_velocity = (actions_gt - noise).view(actions_gt.shape[0], -1)
+        
+        action_mask_flat = action_mask.view(action_mask.shape[0], -1).to(dtype=pred_velocity.dtype)
+        pred_velocity_mask = pred_velocity * action_mask_flat
+        loss_fn = nn.MSELoss()
+        loss = loss_fn(pred_velocity_mask, target_velocity) * (action_mask_flat.numel() / (action_mask_flat.sum() + 1e-8))
+
+        metrics = {"loss": loss.item()}
+        check_info = {"states": states, "actions_gt": actions_gt, "fused": fused_tokens, "pred": pred_velocity, "loss": loss}
+        return loss, metrics, check_info
+
+    def get_model_to_step(self, models):
+        # Override to extract param optimization base
+        return models
+
+    def train(self):
+        dataset, dataloader = self.prepare_data()
+        
+        models = self.build_models()
+        optimizer = self.setup_optimizer(models)
+        models, optimizer, dataloader = self.prepare_accelerator(models, optimizer, dataloader)
 
         max_steps = self.train_cfg.get("max_steps", 60000)
         warmup_steps = self.train_cfg.get("warmup_steps", 3000)
-        loss_fn = nn.MSELoss()
         
         step, best_loss = 0, float("inf")
         save_dir = self.log_cfg.get("save_dir", "checkpoints")
@@ -187,47 +232,27 @@ class Trainer:
             for batch in tqdm(dataloader, desc="Training", disable=not self.accelerator.is_main_process):
                 if step >= max_steps: break
 
-                states = batch["states"].to(dtype=torch.bfloat16)
-                actions_gt = batch["actions"].to(dtype=torch.bfloat16)
-                action_mask = batch["action_mask"]
-                
-                fused_tokens_list = []
-                grad_ctx = torch.no_grad() if not self.train_cfg.get("finetune_vlm", False) else torch.enable_grad()
-                
-                with grad_ctx:
-                    for prompt, images, im_mask in zip(batch["prompts"], batch["images"], batch["image_masks"]):
-                        fused = model.get_vl_embeddings(images=images, image_mask=im_mask, prompt=prompt, return_cls_only=False)
-                        fused_tokens_list.append(fused.to(dtype=torch.bfloat16))
+                loss, metrics, check_info = self.compute_loss(models, batch, step)
 
-                fused_tokens = torch.cat(fused_tokens_list, dim=0)
-
-                with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-                    pred_velocity, noise = model(fused_tokens, state=states, actions_gt=actions_gt, action_mask=action_mask)
-                    
-                target_velocity = (actions_gt - noise).view(actions_gt.shape[0], -1)
-                
-                action_mask = action_mask.view(action_mask.shape[0], -1).to(dtype=pred_velocity.dtype)
-                pred_velocity_mask = pred_velocity * action_mask
-                loss = loss_fn(pred_velocity_mask, target_velocity) * (action_mask.numel() / (action_mask.sum() + 1e-8))
-
-                if not self.check_inf(step, states=states, actions_gt=actions_gt, fused=fused_tokens, pred=pred_velocity, loss=loss):
+                if not self.check_inf(step, **check_info):
                     continue
 
                 optimizer.zero_grad(set_to_none=True)
                 self.accelerator.backward(loss)
                 
+                model_to_step = self.get_model_to_step(models)
                 if hasattr(self.accelerator, "clip_grad_norm_"):
-                    self.accelerator.clip_grad_norm_(model.parameters(), self.train_cfg.get("grad_clip_norm", 1.0))
+                    self.accelerator.clip_grad_norm_(model_to_step.parameters(), self.train_cfg.get("grad_clip_norm", 1.0))
                 else:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), self.train_cfg.get("grad_clip_norm", 1.0))
+                    torch.nn.utils.clip_grad_norm_(model_to_step.parameters(), self.train_cfg.get("grad_clip_norm", 1.0))
 
                 optimizer.step()
                 scheduler.step()
 
                 if step % self.log_cfg.get("log_interval", 100) == 0 and self.accelerator.is_main_process:
                     curr_ep = step / len(dataloader)
+                    metrics.update({"step": step, "epoch": curr_ep, "lr": scheduler.get_last_lr()[0]})
                     logging.info(f"[Step {step}] Loss: {loss.item():.4f}")
-                    metrics = {"step": step, "loss": loss.item(), "epoch": curr_ep, "lr": scheduler.get_last_lr()[0]}
                     wandb.log(metrics)
                     swanlab.log(metrics)
 
@@ -246,16 +271,16 @@ class Trainer:
                 should_save_periodic = (step % self.log_cfg.get("ckpt_interval", 1000) == 0 and step > 0)
                 
                 if should_save_best:
-                    self._save_checkpoint("best", loss.item(), getattr(dataset, "arm2stats_dict", None))
+                    self._save_checkpoint("best", loss.item(), getattr(dataset, "arm2stats_dict", None), models)
                 if should_save_periodic:
-                    self._save_checkpoint(step, loss.item(), getattr(dataset, "arm2stats_dict", None))
+                    self._save_checkpoint(step, loss.item(), getattr(dataset, "arm2stats_dict", None), models)
 
                 step += 1
 
-        self._save_checkpoint("final", loss.item(), getattr(dataset, "arm2stats_dict", None))
+        self._save_checkpoint("final", loss.item(), getattr(dataset, "arm2stats_dict", None), models)
         logging.info("Training complete.")
 
-    def _save_checkpoint(self, tag, loss_val, norm_stats=None):
+    def _save_checkpoint(self, tag, loss_val, norm_stats=None, models=None):
         out_dir = os.path.join(self.log_cfg.get("save_dir", "checkpoints"), f"step_{tag}")
         if self.accelerator.is_main_process and os.path.exists(out_dir):
             shutil.rmtree(out_dir)
@@ -265,6 +290,12 @@ class Trainer:
         self.accelerator.save_state(out_dir)
         
         if self.accelerator.is_main_process:
+            if models is not None:
+                # compatibility with mp_rank_00_model_states.pt expected by Libero Server
+                model_to_save = self.get_model_to_step(models)
+                unwrapped_model = self.accelerator.unwrap_model(model_to_save)
+                torch.save({"module": unwrapped_model.state_dict()}, os.path.join(out_dir, "mp_rank_00_model_states.pt"))
+
             with open(os.path.join(out_dir, "meta.json"), "w") as f:
                 json.dump({"step": tag, "best_loss": loss_val}, f, indent=2)
             with open(os.path.join(out_dir, "config.json"), "w") as f:

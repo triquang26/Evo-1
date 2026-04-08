@@ -1,0 +1,65 @@
+model:
+  type: "evo1_student"
+  vision_encoder: "OpenGVLab/InternVL3-1B"
+  num_llm_layers: 4
+  llm_layer_indices: [0, 4, 8, 13]
+  action_head: "flowmatching"
+  flowmatching:
+    action_horizon: 50
+    per_action_dim: 24
+    embed_dim: 896
+    hidden_dim: 1024
+    state_dim: 24
+    state_hidden_dim: 1024
+    num_heads: 8
+    num_layers: 4
+    dropout: 0.2
+    num_inference_timesteps: 50
+    num_categories: 1
+
+teacher_cfg:
+  type: "evo1"
+  vision_encoder: "OpenGVLab/InternVL3-1B"
+  action_head: "flowmatching"
+  flowmatching:
+    action_horizon: 50
+    per_action_dim: 24
+    embed_dim: 896
+    hidden_dim: 1024
+    state_dim: 24
+    state_hidden_dim: 1024
+    num_heads: 8
+    num_layers: 8
+
+teacher_checkpoint_path: "evaluations/LIBERO/checkpoint"
+student_checkpoint_path: "/mnt/data/sftp/data/quangpt3/Evo-1/checkpoint_distill_stage1_300steps_v02-2/step_500/mp_rank_00_model_states.pt"
+
+dataset:
+  config_path: "src/evo/data/config.yaml"
+  batch_size: 16
+  num_workers: 8
+  image_size: 448
+  binarize_gripper: False
+  use_augmentation: True
+
+train:
+  max_steps: 20000
+  warmup_steps: 1000
+  lr: 0.00001
+  weight_decay: 0.0001
+  grad_clip_norm: 1.0
+  lambda_task: 0.3
+  lambda_kd_vel: 0.35
+  lambda_kd_attn: 0.0
+  kd_attn_student_layer: 1
+  kd_attn_teacher_layer: 3
+  finetune_vlm: True
+  finetune_action_head: True
+
+logging:
+  save_dir: "checkpoint_distill_stage1_fullfinetuning_v02-2"
+  log_interval: 10
+  ckpt_interval: 1000
+  
+wandb_project: "evo1_distillation"
+run_name: "checkpoint_distill_stage1_fullfinetuning_v02-2"

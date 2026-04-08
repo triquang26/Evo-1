@@ -2,21 +2,21 @@ evaluation:
   horizon: 14
   max_steps: [25, 25, 25, 95]
   task_suites:
-    - libero_spatial
+    - libero_10
     - libero_object
     - libero_goal
-    - libero_10
-  num_episodes: 1
+    - libero_spatial
+  num_episodes: 3
   seed: 42
 
 server:
-  url: "ws://0.0.0.0:9000"
+  url: "ws://0.0.0.0:9003"
 
 checkpoint:
   name: "Evo1_libero_all"
 
 logging:
   log_dir: "./log_file"
-  video_dir: "./video_log_file"
+  video_dir: "./video_checkpoint_distill_stage1_fullfinetuning_v02-2"
   video_fps: 30
-debug: True
+debug: False

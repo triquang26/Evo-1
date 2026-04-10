@@ -2,9 +2,9 @@ evaluation:
   horizon: 8
   max_steps: [45, 45, 45, 170]
   task_suites:
-    - libero_10
-    - libero_object
-    - libero_goal
+    # - libero_10
+    # - libero_object
+    # - libero_goal
     - libero_spatial
   num_episodes: 5
   seed: 42

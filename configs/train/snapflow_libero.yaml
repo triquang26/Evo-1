@@ -1,0 +1,45 @@
+dataset:
+  name: "libero"
+  config_path: "src/evo/data/config.yaml"
+  batch_size: 32
+  num_workers: 8
+  image_size: 256
+  use_augmentation: false
+
+model:
+  type: "snapflow"
+  vision_encoder: "OpenGVLab/InternVL3-1B"
+  action_head: "snapflow"
+  flowmatching:
+    embed_dim: 896
+    hidden_dim: 1024
+    horizon: 50
+    per_action_dim: 24
+    state_dim: 24
+    num_heads: 8
+    num_layers: 8
+    num_inference_timesteps: 1 
+
+train:
+  max_steps: 5000
+  warmup_steps: 500
+  lr: 0.000025
+  weight_decay: 0.0001
+  grad_clip_norm: 1.0
+  finetune_vlm: false 
+  finetune_action_head: true
+  
+  alpha: 0.5
+  lambda_weight: 0.1 
+  prediction_clamp_range: [-20, 20]
+
+logging:
+  wandb_project: "evo1-snapflow-libero"
+  run_name: "snapflow-training-v1"
+  save_dir: "checkpoints/snapflow/"
+  log_interval: 50
+  ckpt_interval: 1000
+
+resume:
+  enabled: true
+  path: "/mnt/data/sftp/data/quangpt3/Evo-1/evaluations/LIBERO/libero_cpkt"

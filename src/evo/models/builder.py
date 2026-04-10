@@ -1,5 +1,6 @@
 from src.evo.models.evo1 import EVO1
 from src.evo.models.evo1_custom import EVO1Custom
+from src.evo.models.snapflow import SnapFlowEVO1
 
 def build_model(config):
     model_cfg = config.get("model", config)
@@ -12,5 +13,7 @@ def build_model(config):
     elif model_type == "evo1_student":
         from src.evo.models.evo1_student import EVO1Student
         return EVO1Student(config)
+    elif model_type == "snapflow":
+        return SnapFlowEVO1(config)
     
     raise ValueError(f"Unknown model type: {model_type}")

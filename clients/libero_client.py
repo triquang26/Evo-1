@@ -121,6 +121,7 @@ async def main():
         ckpt_name=ckpt_cfg["name"],
         logger=logger,
         debug=debug_cfg,
+        start_task_idx=eval_cfg.get("start_task_idx", 0)
     )
 
     async with websockets.connect(server_cfg["url"]) as ws:

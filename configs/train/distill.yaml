@@ -31,8 +31,8 @@ teacher_cfg:
     num_heads: 8
     num_layers: 8
 
-teacher_checkpoint_path: "evaluations/LIBERO/checkpoint"
-student_checkpoint_path: "/mnt/data/sftp/data/quangpt3/Evo-1/checkpoint_distill_stage1_300steps_v02-2/step_500/mp_rank_00_model_states.pt"
+teacher_checkpoint_path: "/mnt/data/sftp/data/quangpt3/Evo-1/evaluations/LIBERO/libero_cpkt"
+student_checkpoint_path: "/mnt/data/sftp/data/quangpt3/Evo-1/outputs/weights/student_weights_4lay.pt"
 
 dataset:
   config_path: "src/evo/data/config.yaml"
@@ -43,23 +43,33 @@ dataset:
   use_augmentation: True
 
 train:
-  max_steps: 20000
+  max_steps: 40000
   warmup_steps: 1000
   lr: 0.00001
   weight_decay: 0.0001
   grad_clip_norm: 1.0
-  lambda_task: 0.3
-  lambda_kd_vel: 0.35
-  lambda_kd_attn: 0.0
+  lambda_task: 0.0
+  lambda_kd_vel: 0.0
+  lambda_kd_feat: 1.0
+  lambda_kd_vlm_attn: 1.0 
+  lambda_kd_attn: 0.0       
   kd_attn_student_layer: 1
   kd_attn_teacher_layer: 3
+  lambda_kd_vlm_attn: 1.0     
+  kd_vlm_attn_student_layer: -1
+  kd_vlm_attn_teacher_layer: -1
   finetune_vlm: True
-  finetune_action_head: True
+  finetune_action_head: False
+  finetune_vit: False
 
 logging:
-  save_dir: "checkpoint_distill_stage1_fullfinetuning_v02-2"
+  save_dir: "checkpoint_distill_e2e_40000_v02-5"
   log_interval: 10
-  ckpt_interval: 1000
+  ckpt_interval: 200
+  
+resume:
+  enabled: True
+  path: "/mnt/data/sftp/data/quangpt3/Evo-1/checkpoint_distill_e2e_40000_v02-5/step_800"
   
 wandb_project: "evo1_distillation"
-run_name: "checkpoint_distill_stage1_fullfinetuning_v02-2"
+run_name: "checkpoint_distill_e2e_40000_v02-5"

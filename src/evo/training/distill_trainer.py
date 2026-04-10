@@ -74,10 +74,15 @@ class DistillationTrainer(Trainer):
         
         lambda_task = self.train_cfg.get("lambda_task", 0.1)
         lambda_kd_vel = self.train_cfg.get("lambda_kd_vel", 1.0)
+        lambda_kd_feat = self.train_cfg.get("lambda_kd_feat", 0.0)
         lambda_kd_attn = self.train_cfg.get("lambda_kd_attn", 1.0)
+        lambda_kd_vlm_attn = self.train_cfg.get("lambda_kd_vlm_attn", 0.0) # VLM attention distillation
         
         student_fused_tokens_list = []
         teacher_fused_tokens_list = []
+        
+        student_vlm_attns_list = []
+        teacher_vlm_attns_list = []
         
         grad_ctx = torch.no_grad() if not self.train_cfg.get("finetune_vlm", False) else torch.enable_grad()
         with grad_ctx:
@@ -85,10 +90,17 @@ class DistillationTrainer(Trainer):
                 stu_fused = student_model.get_projected_vl_embeddings(images=images, image_mask=im_mask, prompt=prompt, return_cls_only=False)
                 student_fused_tokens_list.append(stu_fused.to(dtype=torch.bfloat16))
                 
+                # Biến lưu trữ VLM Attention sinh ra từ quá trình forward
+                if hasattr(student_model.embedder, "last_attentions") and student_model.embedder.last_attentions is not None:
+                    student_vlm_attns_list.append(student_model.embedder.last_attentions)
+                
         with torch.no_grad():
             for prompt, images, im_mask in zip(batch["prompts"], batch["images"], batch["image_masks"]):
                 tea_fused = teacher_model.get_vl_embeddings(images=images, image_mask=im_mask, prompt=prompt, return_cls_only=False)
                 teacher_fused_tokens_list.append(tea_fused.to(dtype=torch.bfloat16))
+                
+                if hasattr(teacher_model.embedder, "last_attentions") and teacher_model.embedder.last_attentions is not None:
+                    teacher_vlm_attns_list.append(teacher_model.embedder.last_attentions)
 
         student_fused_tokens = torch.cat(student_fused_tokens_list, dim=0)
         teacher_fused_tokens = torch.cat(teacher_fused_tokens_list, dim=0)
@@ -125,27 +137,70 @@ class DistillationTrainer(Trainer):
             attn_s = attn_stu[student_attn_idx]
             attn_t = attn_tea[teacher_attn_idx]
             
+            # Compute mean over heads to stabilize KD and allow permutation-invariant distillation
+            if attn_s.dim() == 4:
+                attn_s_mean = attn_s.mean(dim=1)
+                attn_t_mean = attn_t.mean(dim=1)
+            else:
+                attn_s_mean = attn_s
+                attn_t_mean = attn_t
+            
             loss_kd_attn = torch.nn.functional.kl_div(
-                torch.log(attn_s + 1e-10), 
-                attn_t + 1e-10, 
+                torch.log(attn_s_mean + 1e-10), 
+                attn_t_mean + 1e-10, 
                 reduction="batchmean"
             )
-            loss_kd_attn = loss_kd_attn / max(1, attn_s.size(-2))
+            loss_kd_attn = loss_kd_attn / max(1, attn_s_mean.size(-2))
+            
+            # --- VLM Backbone Attention Distillation ---
+            loss_kd_vlm_attn = torch.tensor(0.0, device=device, dtype=dtype)
+            if lambda_kd_vlm_attn > 0.0 and len(student_vlm_attns_list) > 0 and len(teacher_vlm_attns_list) > 0:
+                stu_vlm_layer_idx = self.train_cfg.get("kd_vlm_attn_student_layer", -1) 
+                tea_vlm_layer_idx = self.train_cfg.get("kd_vlm_attn_teacher_layer", -1)
+                
+                loss_vlm = 0.0
+                for stu_attns, tea_attns in zip(student_vlm_attns_list, teacher_vlm_attns_list):
+                    attn_s_vlm = stu_attns[stu_vlm_layer_idx] # (1, num_heads, seq_len, seq_len)
+                    attn_t_vlm = tea_attns[tea_vlm_layer_idx] # (1, num_heads, seq_len, seq_len)
+                    
+                    # Compute mean over heads to match visualization logic
+                    attn_s_vlm_mean = attn_s_vlm.mean(dim=1) # (1, seq_len, seq_len)
+                    attn_t_vlm_mean = attn_t_vlm.mean(dim=1) # (1, seq_len, seq_len)
+                    
+                    # Compute mean over last dimension (often context length or image context)
+                    l_vlm = torch.nn.functional.kl_div(
+                        torch.log(attn_s_vlm_mean + 1e-10), 
+                        attn_t_vlm_mean.type_as(attn_s_vlm_mean) + 1e-10, 
+                        reduction="batchmean"
+                    )
+                    
+                    # batchmean divides by batch_size (which is 1). We also normalize by seq_len (queries)
+                    l_vlm = l_vlm / max(1, attn_s_vlm_mean.size(-2))
+                    loss_vlm = loss_vlm + l_vlm
+                loss_kd_vlm_attn = loss_vlm / len(student_vlm_attns_list)
+            # ---------------------------------------------
+
+            loss_fn = nn.MSELoss()
+            
+            # Feature KD loss
+            # Distill entire spatial feature map to align VLM spatial/attention reasoning
+            loss_kd_feat = loss_fn(student_fused_tokens, teacher_fused_tokens)
             
             target_velocity = (actions_gt - noise_stu).view(actions_gt.shape[0], -1)
             action_mask_flat = action_mask.view(action_mask.shape[0], -1).to(dtype=pred_velocity_stu.dtype)
-            loss_fn = nn.MSELoss()
             
             loss_task = loss_fn(pred_velocity_stu * action_mask_flat, target_velocity) * (action_mask_flat.numel() / (action_mask_flat.sum() + 1e-8))
             loss_kd_vel = loss_fn(pred_velocity_stu * action_mask_flat, pred_velocity_tea * action_mask_flat) * (action_mask_flat.numel() / (action_mask_flat.sum() + 1e-8))
             
-            loss = lambda_task * loss_task + lambda_kd_attn * loss_kd_attn + lambda_kd_vel * loss_kd_vel
+            loss = lambda_task * loss_task + lambda_kd_feat * loss_kd_feat + lambda_kd_vel * loss_kd_vel + lambda_kd_attn * loss_kd_attn + lambda_kd_vlm_attn * loss_kd_vlm_attn
 
         metrics = {
             "loss": loss.item(),
             "l_task": loss_task.item(),
+            "l_kd_feat": loss_kd_feat.item(),
+            "l_kd_vel": loss_kd_vel.item(),
             "l_kd_attn": loss_kd_attn.item(),
-            "l_kd_vel": loss_kd_vel.item()
+            "l_kd_vlm_attn": loss_kd_vlm_attn.item() if isinstance(loss_kd_vlm_attn, torch.Tensor) else float(loss_kd_vlm_attn)
         }
         check_info = {
             "states": states,

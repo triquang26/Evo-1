@@ -36,3 +36,4 @@ clients/video*
 src/evo/data/
 student*.pt
 *.log
+clients/log*

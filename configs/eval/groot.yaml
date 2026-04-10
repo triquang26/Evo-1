@@ -1,0 +1,20 @@
+evaluation:
+  # Path to the model checkpoint. Examples:
+  # - For original GR00T: "liorbenhorin-nv/groot-libero_10-64_40000"
+  # - For GR00T-Mini: "checkpoint_groot_mini_distill_v1/step_final"
+  model_path: "liorbenhorin-nv/groot-libero_10-64_40000"
+  
+  # Evaluate on an entire suite (e.g., libero_10, libero_spatial, libero_object, libero_goal)
+  # Leave empty if you want to use a specific env_name below.
+  task_suite: "libero_10"
+  
+  # Or evaluate on a single specific environment
+  # env_name: "libero_sim/LIVING_ROOM_SCENE2_put_both_the_alphabet_soup_and_the_tomato_soup_in_the_basket"
+  
+  # Embodiment tag
+  embodiment_tag: "LIBERO_PANDA"
+  
+  # Server and client settings
+  server_port: 5555
+  n_episodes: 10
+  n_action_steps: 8

@@ -1,8 +1,9 @@
 host: "0.0.0.0"
-port: 9003
-# checkpoint_dir: "evaluations/LIBERO/libero_cpkt"
-checkpoint_dir: "/mnt/data/sftp/data/quangpt3/Evo-1/checkpoint_distill_stage1_fullfinetuning_v02-2/step_1000"
-model_type: "evo1_student"
+port: 9010
+checkpoint_dir: "/mnt/data/sftp/data/quangpt3/Evo-1/evaluations/LIBERO/libero_cpkt"
+# checkpoint_dir: "/mnt/data/sftp/data/quangpt3/Evo-1/checkpoint_distill_stage2_40000_v02-3/step_best"
+model_type: "evo1"
 num_inference_timesteps: 4
 max_message_size: 100000000
 device: "cuda"
+#srun --jobid 4794 --overlap --pty bash\student

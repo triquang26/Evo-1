@@ -1,0 +1,43 @@
+model:
+  type: "groot_mini"
+  embodiment_tag: "LIBERO_PANDA"
+  hidden_size: 1024
+  vlm_layer_indices: [0, 2, 4, 6, 8, 10, 12, 14]
+  action_head_layer_indices: [0, 1, 2, 3, 8, 9, 10, 11, 16, 17, 18, 19, 24, 25, 26, 27]
+  view_names: ["agentview_image", "robot0_eye_in_hand_image"]
+
+teacher_cfg:
+  type: "groot"
+  hf_repo_id: "liorbenhorin-nv/groot-libero_10-64_40000"
+  device: "cpu"
+  strict: False
+
+student_checkpoint_path: "root_mini_checkpoint.pt"
+
+dataset:
+  config_path: "src/evo/data/config.yaml"
+  batch_size: 16
+  num_workers: 8
+  image_size: 448
+  binarize_gripper: False
+  use_augmentation: True
+
+train:
+  max_steps: 20000
+  warmup_steps: 1000
+  lr: 0.00001
+  weight_decay: 0.0001
+  grad_clip_norm: 1.0
+  lambda_task: 1.0  # L1 Imitation Task
+  lambda_kd_vel: 0.0
+  lambda_kd_attn: 0.0
+  finetune_vlm: True
+  finetune_action_head: True
+
+logging:
+  save_dir: "checkpoint_groot_mini_distill_v1"
+  log_interval: 10
+  ckpt_interval: 1000
+  
+wandb_project: "evo1_groot_distillation"
+run_name: "groot_mini_distill_v1"

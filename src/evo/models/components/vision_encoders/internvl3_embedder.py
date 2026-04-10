@@ -265,10 +265,14 @@ class InternVL3Embedder(nn.Module):
             attention_mask=attention_mask,
             output_hidden_states=True,
             return_dict=True,
+            output_attentions=DEBUG, # Chỉ request attentions khi DEBUG=True (đã tắt Flash Attention)
         )
-        # attentions = outputs.attentions
-        # print("Attention saving")
-        # torch.save(attentions[-1],'attention_map_step.pt')
+        # Bắt lại bộ attention map
+        if DEBUG:
+            self.last_attentions = outputs.attentions
+        else:
+            self.last_attentions = None
+
         fused_hidden = outputs.hidden_states[-1].to(torch.float32)
 
         return fused_hidden[:, 0, :] if return_cls_only else fused_hidden

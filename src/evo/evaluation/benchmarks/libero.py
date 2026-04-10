@@ -76,7 +76,7 @@ def save_video(frames, filename="simulation.mp4", fps=20, save_dir="videos"):
         imageio.mimsave(filepath, frames, fps=fps)
 
 class LiberoBenchmark:
-    def __init__(self, horizon: int, camera_res: int, seed: int, num_episodes: int, video_dir: str, ckpt_name: str, logger: logging.Logger,debug=False):
+    def __init__(self, horizon: int, camera_res: int, seed: int, num_episodes: int, video_dir: str, ckpt_name: str, logger: logging.Logger, debug=False, start_task_idx=0):
         self.horizon = horizon
         self.camera_res = camera_res
         self.seed = seed
@@ -85,6 +85,8 @@ class LiberoBenchmark:
         self.ckpt_name = ckpt_name
         self.logger = logger
         self.debug = debug
+        self.start_task_idx = start_task_idx
+
     async def run_suite(self, task_suite_name: str, max_steps: int, ws):
         suite = benchmark.get_benchmark_dict()[task_suite_name]()
         self.logger.info(f"Starting task suite {task_suite_name} ({suite.n_tasks} tasks)")
@@ -92,7 +94,12 @@ class LiberoBenchmark:
         total_success, total_episodes, total_steps = 0, 0, 0
         if self.debug:
             suite.n_tasks = 1
+        
         for task_id in range(suite.n_tasks):
+            if task_id < self.start_task_idx:
+                self.logger.info(f"Skipping Task {task_id + 1}...")
+                continue
+                
             task = suite.get_task(task_id)
             initial_states = suite.get_task_init_states(task_id)
             
@@ -136,7 +143,7 @@ class LiberoBenchmark:
                             
                         frames.append(np.hstack([np.rot90(obs["agentview_image"], 2), np.rot90(obs["robot0_eye_in_hand_image"], 2)]))
                         
-                        if done:
+                        if done or reward > 0:
                             episode_done = True
                             task_success += 1
                             total_success += 1

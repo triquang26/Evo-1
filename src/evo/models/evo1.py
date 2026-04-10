@@ -157,8 +157,16 @@ class EVO1(nn.Module):
 
     def set_finetune_flags(self):
         train_cfg = self.config.get("train", self.config)
+        
+        # 1. Freeze entire VLM if finetune_vlm is False
         if not train_cfg.get("finetune_vlm", False):
             self._freeze_module(self.embedder, "VLM (InternVL3)")
+        else:
+            # VLM is being finetuned (LLM backbone unfrozen), but we still MUST freeze ViT by default!
+            if not train_cfg.get("finetune_vit", False):
+                if hasattr(self.embedder, "model") and hasattr(self.embedder.model, "vision_model"):
+                    self._freeze_module(self.embedder.model.vision_model, "ViT (InternVL3 Vision Model)")
 
+        # 2. Freeze Action Head if needed
         if not train_cfg.get("finetune_action_head", False):
             self._freeze_module(self.action_head, "Action Head")

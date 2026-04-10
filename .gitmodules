@@ -1,6 +1,6 @@
 [submodule "externals/lerobot"]
 	path = externals/lerobot
 	url = https://github.com/huggingface/lerobot.git
-[submodule "externals/externals/Vlaser"]
-	path = externals/externals/Vlaser
-	url = https://github.com/OpenGVLab/Vlaser.git
+[submodule "externals/Isaac-GR00T"]
+	path = externals/Isaac-GR00T
+	url = https://github.com/NVIDIA/Isaac-GR00T.git

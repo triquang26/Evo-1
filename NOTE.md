@@ -23,7 +23,7 @@ accelerate launch \
     --mixed_precision bf16 \
     --num_processes 1 \
     --dynamo_backend inductor \
-    src/evo/training/distill_trainer.py configs/train/distill.yaml
+    src/evo/training/snapflow_distill_trainer.py configs/train/snapflow_libero.yaml
 dataset download code:
 # Tải dataset libero_10
 huggingface-cli download --repo-type dataset IPEC-COMMUNITY/libero_10_no_noops_1.0.0_lerobot --local-dir /mnt/data/sftp/data/quangpt3/Evo-1/src/evo/data/libero_10 --local-dir-use-symlinks False
